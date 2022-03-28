@@ -1,0 +1,485 @@
+#!/bin/bash
+
+#export POSIXLY_CORRECT=1
+
+show_help() {                             # Function: Print a help message.
+    echo "Pouziti: $0 [-h] [FILTERS] [COMMAND] [LOG [LOG2 [...]]"
+    echo
+    echo "  -h                     ukaze tuto napovedu"
+    echo
+    echo "  FILTERS muze byt kombinace nasledujicich (kazdy max. jednou):"
+    echo "    -a DATETIME          after: jen zaznamy po DATETIME. DATETIME ve formatu YYYY-MM-DD."
+    echo "    -b DATETIME          before: jen zaznamy pred DATETIME (vcetne)."
+    echo "    -g GENDER            jen specifikce pohlavi. GENDER muze byt M (muzi) nebo Z (zeny)."
+    echo "    -s [WIDTH]           u prikazu gender, age, daily, monthly, yearly, countries, districts a regions"
+    echo "                         vypisuje data graficky v podobe histogramu. WIDTH nastavuje sirku histogramu."
+    echo "    -d DISTRICT_FILE     pro prikaz districts vypisuje místo LAU 1 kodu okresu jeho jmeno."
+    echo "                         Mapovani kodu na jmena je v souboru DISTRICT_FILE"
+    echo "    -r REGIONS_FILE      pro prikaz regions vypisuje místo NUTS 3 kodu kraje jeho jmeno."
+    echo "                         Mapovani kodu na jmena je v souboru REGIONS_FILE"
+    echo
+    echo "  COMMAND je jeden z nasledujicich prikazu:"
+    echo "    infected             spocita pocet nakazenych"
+    echo "    merge                slouci vstupy do jednoho vystupu"
+    echo "    gender               vypise statistiku nakazenych pro jednotliva pohlavi"
+    echo "    age                  vypise statistiku nakazenych podle veku"
+    echo "    daily                vypise statistiku nakazenych pro jednotlive dny"
+    echo "    monthly              vypise statistiku nakazenych pro jednolive mesice"
+    echo "    yearly               vypise statistiku nakazenych pro jednotlive roky"
+    echo "    countries            vypise statistiku nakazenych podle zemi"
+    echo "    districts            vypise statistiku nakazenych podle okresu"
+    echo "    regions              vypise statistiku nakazenych podle kraju"
+    echo
+    echo "  LOG, LOG2 ... jsou vstupni CSV soubory. Pri neuvedeni se pouzije stdin."
+}
+
+exit_abnormal() {                         # Function: Exit with error.
+    echo "Usage: $0 [-h] [FILTERS] [COMMAND] [LOG [LOG2 [...]]" >&2  # Redirect to stderr
+    exit 1
+}
+
+chr() {
+    [ "$1" -lt 256 ] || return 1
+    printf "\\$(printf '%03o' "$1")"
+}
+
+ord() {
+    LC_CTYPE=C printf '%d' "'$1"
+}
+
+repstr(){
+	for i in $(seq $2); do
+        echo -n "$1"
+    done
+}
+
+vypis() {
+    if [ -z ${WIDTH+x} ]; then
+        printf '%s' "$1"
+    else
+        if [[ $WIDTH -eq 99999 ]] ; then
+            repstr "#" $(($1 / $2))
+        else
+            repstr "#" $(($1 * $WIDTH / $MAXCNT))
+        fi
+    fi
+}
+
+chkMax() {
+    if [[ $MAXCNT -lt $1 ]] ; then
+        MAXCNT=$1
+    fi
+}
+
+chkDate() {
+    if [[ ${#1} -ne 10 ]] ; then
+        echo -n "1"
+    else
+        if [[ ${1:4:1} != "-" || ${1:7:1} != "-" ]] ; then
+            echo -n "1"
+        else
+            #echo -n "0" # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
+            #return 0    # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
+            date -d $1 2>: 1>:
+            if [[ $? -eq 0 ]] ; then
+                echo -n "0"
+            else
+                echo -n "1"
+            fi
+        fi
+    fi
+}
+
+while getopts ":ha:b:g:sd:r:" options; do         # Loop: Get the next option;
+                                          # use silent error checking;
+                                          # options n and t take arguments.
+    #echo "OPTNAME = $optname, OPTARG = $OPTARG, options = ${options}, OPTIND = $OPTIND"
+    case "${options}" in                    # 
+        h)                                    # If the option is h,
+            show_help                           # show usage and help.
+            exit 0
+            ;;
+        s)                                    # If the option is w,
+                           # Set $WIDTH to specified value.
+            eval nextopt=\${$OPTIND}
+            # existing or starting with dash?
+            if [[ -n $nextopt && $nextopt != -* ]] ; then
+                re_isanum='^[0-9]+$'                # Regex: cela cisla
+                if [[ $nextopt =~ $re_isanum ]] ; then  # je za -s cislo
+                    WIDTH=$nextopt                      # pak je to WIDTH
+                    OPTIND=$((OPTIND + 1))
+                    if [ $WIDTH -eq "0" ]; then       # a jestli je to nula, tak je to spatne
+                        echo "Error: -s WIDTH musi byt cele kladne cislo"
+                        exit_abnormal                     # Exit abnormally.
+                    fi
+                else
+                    WIDTH=99999                     # za -s neni cislo, tak je delka dana zadanim
+                fi
+            else
+                WIDTH=99999                         # za -s je nic nebo dalsi parametr, takze delka se ridi zadanim
+            fi
+            ;;
+        a)
+            DATE_AFTER=$OPTARG
+            if [[ $(chkDate $DATE_AFTER) -ne 0 ]] ; then
+                echo "Error: datum za -a musi byt platne datum ve formatu YYYY-MM-DD"
+                exit_abnormal
+            fi
+            ;;
+        b)
+            DATE_BEFORE=$OPTARG
+            if [[ $(chkDate $DATE_BEFORE) -ne 0 ]] ; then
+                echo "Error: datum za -b musi byt platne datum ve formatu YYYY-MM-DD"
+                exit_abnormal
+            fi
+            ;;
+        g)
+            GENDER_FILTER=$OPTARG
+            if [[ $GENDER_FILTER != "M" && $GENDER_FILTER != "Z" ]] ; then
+                echo "Error: pohlavi za -g musi byt M nebo Z"
+                exit_abnormal
+            fi
+            ;;
+        r)
+            echo "RRRRRR"
+            ;;
+        :)                                    # If expected argument omitted:
+            echo "Error: -${OPTARG} requires an argument."
+            exit_abnormal                       # Exit abnormally.
+            ;;
+        *)                                    # If unknown (any other) option:
+            echo "Unknown (any other) option"
+            exit_abnormal                       # Exit abnormally.
+            ;;
+    esac
+done
+
+(( OPTIND-- ))
+shift $OPTIND
+
+if [[ "$1" == @(infected|merge|gender|age|daily|monthly|yearly|countries|districts|regions) ]] ; then
+    PRIKAZ=$1
+    shift
+else
+    PRIKAZ="rewrite"
+fi
+#echo "Prikaz = $PRIKAZ"
+#echo "Remaining arguments: ’$*’"
+
+HASH_gender=100000
+HASH_age=10000
+HASH_daily=500
+HASH_monthly=10000
+HASH_yearly=100000
+HASH_countries=100
+HASH_districts=1000
+HASH_regions=10000
+
+LINES=0
+MALE=0
+FEMALE=0
+COUNTED=0
+NONECNT=0
+MAXCNT=0
+AGE=([0]=0 [6]=0 [16]=0 [26]=0 [36]=0 [46]=0 [56]=0 [66]=0 [76]=0 [86]=0 [96]=0 [106]=0)
+declare -a cntarr=()
+
+if [[ -z $* ]] ; then
+    FILE_LIST="stdin"
+else
+    FILE_LIST=""
+    for FP in $* ; do
+        for FNM in $FP ; do
+            if ! [[ -f $FNM ]] ; then
+                echo "Soubor $FNM nenalezen" >&2
+                #exit 99
+            fi
+            #echo $FNM
+            if [[ -z $FILE_LIST ]] ; then
+                FILE_LIST="$FNM"
+            else
+                FILE_LIST+=" $FNM"
+            fi
+        done
+    done
+fi
+
+if [[ $PRIKAZ == "rewrite" || $PRIKAZ == "merge" ]] ; then
+    echo "id,datum,vek,pohlavi,kraj_nuts_kod,okres_lau_kod,nakaza_v_zahranici,nakaza_zeme_csu_kod,reportovano_khs"
+fi
+
+for FNM in $FILE_LIST ; do
+    #echo "Zpracovavam soubor \"$FNM\""
+    if [[ $FNM == "stdin" ]] ; then
+        FNM=""
+    fi
+    if [[ $FNM == *".gz"* ]] ; then
+        CMD="zcat"
+    elif [[ $FNM == *".bz2"* ]] ; then
+        CMD="bzcat"
+    else
+        CMD="cat"
+    fi
+
+    OLDIFS=$IFS
+    IFS=','
+    while read id datum vek pohlavi kraj_nuts_kod okres_lau_kod nakaza_v_zahranici nakaza_zeme_csu_kod reportovano_khs
+    do
+        (( LINES++ ))
+        if (( $LINES % 50000 == 0 )) ; then     # tecka po 50 000 zaznamech, aby se vedelo, ze to neco dela - ODSTRANIT
+            printf "."
+        fi
+        # odstranit whites zleva a zprava u id
+        id="${id#"${id%%[![:space:]]*}"}"
+        id="${id%"${id##*[![:space:]]}"}"
+        if [ -z $id ] ; then  # prazdne id (radek) ignorujeme
+            continue
+        fi
+        if [[ $id == *"id"* && $datum == "datum" && $vek == "vek" && $pohlavi == "pohlavi" ]] ; then   # hlavicka - ignorujeme
+            continue
+        fi
+        # odstranit whites zleva a zprava u datum
+        datum="${datum#"${datum%%[![:space:]]*}"}"
+        datum="${datum%"${datum##*[![:space:]]}"}"
+        #if [[ $(chkDate $datum) -ne 0 ]] ; then     # kontrola dpravnosti data ODKOMENTOVAT
+        #    echo "Invalid date: $id,$datum,$vek,$pohlavi,$kraj_nuts_kod,$okres_lau_kod,$nakaza_v_zahranici,$nakaza_zeme_csu_kod,$reportovano_khs" >&2
+        #    continue
+        #fi
+        # odstranit whites zleva a zprava u vek
+        vek="${vek#"${vek%%[![:space:]]*}"}"
+        vek="${vek%"${vek##*[![:space:]]}"}"
+        re_isanum='^[0-9]+$'
+        if [[ -n $vek ]] ; then
+            if ! [[ $vek =~ $re_isanum ]] ; then    # kontrola jestli je vek cele cislo
+                echo "Invalid age: $id,$datum,$vek,$pohlavi,$kraj_nuts_kod,$okres_lau_kod,$nakaza_v_zahranici,$nakaza_zeme_csu_kod,$reportovano_khs" >&2
+                continue
+            fi
+        fi
+        if [[ -n $DATE_AFTER ]] ; then  # DATE_AFTER filtr
+            #dbdate=$(date -d $datum +%s)
+            #conddate=$(date -d $DATE_AFTER +%s)
+            #if [ $dbdate -lt $conddate ]; then
+            if [[ $datum < $DATE_AFTER ]]; then
+                continue
+            fi  
+        fi
+        if [[ -n $DATE_BEFORE ]] ; then  # DATE_BEFORE filtr
+            if [[ $datum > $DATE_BEFORE ]]; then
+                continue
+            fi  
+        fi
+        if [[ -n $GENDER_FILTER ]] ; then  # GENDER filtr
+            if [[ $GENDER_FILTER != $pohlavi ]]; then
+                continue
+            fi  
+        fi
+        (( COUNTED++ ))         # radek je asi v potradku, tak ho zapocitame, jako platny
+        case $PRIKAZ in
+            infected)
+                ;;
+            merge | rewrite)
+                echo "$id,$datum,$vek,$pohlavi,$kraj_nuts_kod,$okres_lau_kod,$nakaza_v_zahranici,$nakaza_zeme_csu_kod,$reportovano_khs"
+                ;;
+            gender)
+                if [[ $pohlavi == "M" ]] ; then
+                    chkMax $(( MALE++ ))
+                elif [[ $pohlavi == "Z" ]] ; then
+                    chkMax $(( FEMALE++ ))
+                else
+                    chkMax $(( NONECNT++ ))
+                fi
+                ;;
+            age)
+                if [[ -z $vek ]] ; then
+                    chkMax $(( NONECNT++))
+                elif [ $vek -ge 106 ] ; then
+                    chkMax $(( AGE[106]++ ))
+                elif [ $vek -ge 96 ] ; then
+                    chkMax $(( AGE[96]++ ))
+                elif [ $vek -ge 86 ] ; then
+                    chkMax $(( AGE[86]++ ))
+                elif [ $vek -ge 76 ] ; then
+                    chkMax $(( AGE[76]++ ))
+                elif [ $vek -ge 66 ] ; then
+                    chkMax $(( AGE[66]++ ))
+                elif [ $vek -ge 56 ] ; then
+                    chkMax $(( AGE[56]++ ))
+                elif [ $vek -ge 46 ] ; then
+                    chkMax $(( AGE[46]++ ))
+                elif [ $vek -ge 36 ] ; then
+                    chkMax $(( AGE[36]++ ))
+                elif [ $vek -ge 26 ] ; then
+                    chkMax $(( AGE[26]++ ))
+                elif [ $vek -ge 16 ] ; then
+                    chkMax $(( AGE[16]++ ))
+                elif [ $vek -ge 6 ] ; then
+                    chkMax $(( AGE[6]++ ))
+                elif [ $vek -ge 0 ] ; then
+                    chkMax $(( AGE[0]++ ))
+                fi
+                ;;
+            daily)
+                ndx="${datum:0:4}${datum:5:2}${datum:8:2}"
+                chkMax $(( cntarr[$ndx] ++ ))
+                ;;
+            monthly)
+                ndx="${datum:0:4}${datum:5:2}"
+                chkMax $(( cntarr[$ndx] ++ ))
+                ;;
+            yearly)
+                ndx="${datum:0:4}"
+                chkMax $(( cntarr[$ndx] ++ ))
+                ;;
+            countries)
+                if [[ -n $nakaza_zeme_csu_kod && $nakaza_zeme_csu_kod != "CZ" ]] ; then
+                    if [[ ${#nakaza_zeme_csu_kod} -ne 2 ]] ; then
+                        echo "Neocekavany identifikator zeme - spatna delka" >%2
+                        (( COUNTED-- ))
+                        continue
+                    fi
+                    c1=$(ord ${nakaza_zeme_csu_kod:0:1})
+                    c2=$(ord ${nakaza_zeme_csu_kod:1:1})
+                    ndx=$(($c1*256+$c2))
+                    chkMax $(( cntarr[$ndx] ++ ))
+                else
+                    (( COUNTED-- ))
+                fi
+                ;;
+            districts)
+                if [[ -n $okres_lau_kod ]] ; then
+                    if [[ ${#okres_lau_kod} -ne 6 || ${okres_lau_kod:0:3} != "CZ0" ]] ; then
+                        echo "Neocekavany identifikator okresu - spatna delka nebo chybi CZ0 na zacatku" >%2
+                        (( COUNTED-- ))
+                        continue
+                    fi
+                    ndx=${okres_lau_kod:3:3}
+                    if [[ $ndx == "20A" ]] ; then
+                        ndx="210"
+                    elif [[ $ndx == "20B" ]] ; then
+                        ndx="211"
+                    elif [[ $ndx == "20C" ]] ; then
+                        ndx="212"
+                    fi
+                    chkMax $(( cntarr[$ndx] ++ ))
+                else
+                    (( NONECNT++ ))
+                fi
+                ;;
+            regions)
+                if [[ -n $kraj_nuts_kod ]] ; then
+                    if [[ ${#kraj_nuts_kod} -ne 5 || ${kraj_nuts_kod:0:3} != "CZ0" ]] ; then
+                        echo "Neocekavany identifikator kraje - spatna delka nebo chybi CZ0 na zacatku" >%2
+                        (( COUNTED-- ))
+                        continue
+                    fi
+                    ndx=${kraj_nuts_kod:3:2}
+                    chkMax $(( cntarr[$ndx] ++ ))
+                else
+                    (( NONECNT++ ))
+                fi
+                ;;
+            *)
+                echo "Prikaz zatim neni implementovan" >&2
+                exit_abnormal                       # Exit abnormally.
+                ;;
+        esac
+    done < <($CMD $FNM)
+    IFS=$OLDIFS
+done
+
+echo                            # Prazdny radek po kontorlnich teckach. Toto pak oddelat
+echo "Zpracovano $LINES a zapocitano $COUNTED radku."  # Toto pak oddelat
+
+if [[ $MAXCNT -eq 0 ]] ; then
+    MAXCNT=$WIDTH
+fi
+
+case $PRIKAZ in
+    infected)
+        echo $COUNTED
+        ;;
+    merge | rewrite)
+        ;;
+    gender)
+        echo "M: $(vypis $MALE $HASH_gender)"
+        echo "Z: $(vypis $FEMALE $HASH_gender)"
+        if [[ $NONECNT -gt 0 ]] ; then
+            echo "None: $(vypis $NONECNT $HASH_gender)"
+        fi
+        ;;
+    age)
+        echo "0-5   : $(vypis ${AGE[0]} $HASH_age)"
+        echo "6-15  : $(vypis ${AGE[6]} $HASH_age)"
+        echo "16-25 : $(vypis ${AGE[16]} $HASH_age)"
+        echo "26-35 : $(vypis ${AGE[26]} $HASH_age)"
+        echo "36-45 : $(vypis ${AGE[36]} $HASH_age)"
+        echo "46-55 : $(vypis ${AGE[46]} $HASH_age)"
+        echo "56-65 : $(vypis ${AGE[56]} $HASH_age)"
+        echo "66-75 : $(vypis ${AGE[66]} $HASH_age)"
+        echo "76-85 : $(vypis ${AGE[76]} $HASH_age)"
+        echo "86-95 : $(vypis ${AGE[86]} $HASH_age)"
+        echo "96-105: $(vypis ${AGE[96]} $HASH_age)"
+        echo ">105  : $(vypis ${AGE[106]} $HASH_age)"
+        echo "None  : $(vypis $NONECNT $HASH_age)"
+        ;;
+    daily)
+        for d in "${!cntarr[@]}"
+        do
+            echo "${d:0:4}-${d:4:2}-${d:6:2} : $(vypis ${cntarr[$d]} $HASH_daily)"
+        done
+        ;;
+    monthly)
+        for d in "${!cntarr[@]}"
+        do
+            echo "${d:0:4}-${d:4:2} : $(vypis ${cntarr[$d]} $HASH_monthly)"
+        done
+        ;;
+    yearly)
+        for d in "${!cntarr[@]}"
+        do
+            echo "${d:0:4} : $(vypis ${cntarr[$d]} $HASH_yearly)"
+        done
+        ;;
+    countries)
+        for ndx in "${!cntarr[@]}"
+        do
+            c1=$(( $ndx / 256 ))
+            c2=$(( $ndx % 256 ))
+            ch1=$(chr $c1)
+            ch2=$(chr $c2)
+            echo "$ch1$ch2 : $(vypis ${cntarr[$ndx]} $HASH_countries)"
+        done
+        ;;
+    districts)
+        for ndx in "${!cntarr[@]}"
+        do
+            tndx=$ndx
+            if [[ $tndx == "210" ]] ; then
+                tndx="20A"
+            elif [[ $tndx == "211" ]] ; then
+                tndx="20B"
+            elif [[ $tndx == "212" ]] ; then
+                tndx="20C"
+            fi
+            echo "CZ0$tndx: $(vypis ${cntarr[$ndx]} $HASH_districts)"
+        done
+        if [[ $NONECNT -gt 0 ]] ; then
+            echo "None: $(vypis $NONECNT $HASH_districts)"
+        fi
+        ;;
+    regions)
+        for ndx in "${!cntarr[@]}"
+        do
+            echo "CZ0$ndx: $(vypis ${cntarr[$ndx]} $HASH_regions)"
+        done
+        if [[ $NONECNT -gt 0 ]] ; then
+            echo "None: $(vypis $NONECNT $HASH_regions)"
+        fi
+        ;;
+    *)
+        echo "Prikaz zatim neni implementovan na konci" >&2
+        exit_abnormal                       # Exit abnormally.
+        ;;
+esac
+
+exit 0
