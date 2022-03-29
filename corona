@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#export POSIXLY_CORRECT=1
+export POSIXLY_CORRECT=1
 
-show_help() {                             # Function: Print a help message.
+show_help() {                           # Funkce: Tisk napovedy
     echo "Pouziti: $0 [-h] [FILTERS] [COMMAND] [LOG [LOG2 [...]]"
     echo
     echo "  -h                     ukaze tuto napovedu"
@@ -33,27 +33,27 @@ show_help() {                             # Function: Print a help message.
     echo "  LOG, LOG2 ... jsou vstupni CSV soubory. Pri neuvedeni se pouzije stdin."
 }
 
-exit_abnormal() {                         # Function: Exit with error.
-    echo "Usage: $0 [-h] [FILTERS] [COMMAND] [LOG [LOG2 [...]]" >&2  # Redirect to stderr
+exit_abnormal() {                       # Funkce: Ukonceni programu s chybou a vypisem kratke napovedy
+    echo "Usage: $0 [-h] [FILTERS] [COMMAND] [LOG [LOG2 [...]]" 1>&2  # Redirect to stderr
     exit 1
 }
 
-chr() {
+chr() {                                 # Funkce: prevod cisla (ASCII) na znak
     [ "$1" -lt 256 ] || return 1
     printf "\\$(printf '%03o' "$1")"
 }
 
-ord() {
+ord() {                                 # Funkce: prevod znaku na cislo (ASCII)
     LC_CTYPE=C printf '%d' "'$1"
 }
 
-repstr(){
+repstr(){                               # Funkce: opakuj $2 krat znak $1 
 	for i in $(seq $2); do
         echo -n "$1"
     done
 }
 
-vypis() {
+vypis() {                               # Funkce: vypis hodnot jako cislo nebo sloupec tvoreny znakem #
     if [ -z ${WIDTH+x} ]; then
         printf '%s' "$1"
     else
@@ -65,13 +65,13 @@ vypis() {
     fi
 }
 
-chkMax() {
+chkMax() {                              # Funkce: kontrola a pripadna uprava maximalniho poctu polozek
     if [[ $MAXCNT -lt $1 ]] ; then
         MAXCNT=$1
     fi
 }
 
-chkDate() {
+chkDate() {                             # Funkce: kontrola spravnosti datumu ve formatu YYYY-MM-DD
     if [[ ${#1} -ne 10 ]] ; then
         echo -n "1"
     else
@@ -80,7 +80,7 @@ chkDate() {
         else
             #echo -n "0" # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
             #return 0    # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
-            date -d $1 2>: 1>:
+            date -d $1 +"%Y-%m-%d" > /dev/null 2>&1
             if [[ $? -eq 0 ]] ; then
                 echo -n "0"
             else
@@ -90,17 +90,20 @@ chkDate() {
     fi
 }
 
+declare -A dnames
+declare -A rnames
+
+# zpracovani parametru na prikazove radce
 while getopts ":ha:b:g:sd:r:" options; do         # Loop: Get the next option;
                                           # use silent error checking;
                                           # options n and t take arguments.
     #echo "OPTNAME = $optname, OPTARG = $OPTARG, options = ${options}, OPTIND = $OPTIND"
     case "${options}" in                    # 
-        h)                                    # If the option is h,
-            show_help                           # show usage and help.
+        h)                                    # Option -h je napoveda
+            show_help
             exit 0
             ;;
-        s)                                    # If the option is w,
-                           # Set $WIDTH to specified value.
+        s)                                    # Option -s nastaví $WIDTH podle parametru nebo jako default (99999)
             eval nextopt=\${$OPTIND}
             # existing or starting with dash?
             if [[ -n $nextopt && $nextopt != -* ]] ; then
@@ -140,9 +143,50 @@ while getopts ":ha:b:g:sd:r:" options; do         # Loop: Get the next option;
                 exit_abnormal
             fi
             ;;
-        r)
-            echo "RRRRRR"
+        d)
+            if ! [[ -f $OPTARG ]] ; then
+                echo "Chyba v parametru -d, soubor $OPTARG nenalezen" 1>&2
+                exit_abnormal
+            fi
+            OLDIFS=$IFS
+            IFS=';'
+            while read kod_okresu nazev_okresu zkratka_okresu kod_NUTS4_okresu nazev_kraje nic_nic
+            do
+                kod_NUTS4_okresu="${kod_NUTS4_okresu%\"}"
+                kod_NUTS4_okresu="${kod_NUTS4_okresu#\"}"
+                kod_NUTS4_okresu=${kod_NUTS4_okresu//" "/"_"}
+                nazev_okresu="${nazev_okresu%\"}"
+                nazev_okresu="${nazev_okresu#\"}"
+                if [[ $kod_NUTS4_okresu != "Kod_NUTS4_okresu" ]] ; then     # pokud to neni hlavicka, tak pridat do indexovaneho pole
+                    #echo "kod=$kod_NUTS4_okresu, nazev=$nazev_okresu"
+                    dnames[$kod_NUTS4_okresu]=$nazev_okresu
+                fi
+            done < $OPTARG
+            IFS=$OLDIFS
+            #echo "number of items = ${#dnames[@]}"
+            #for key in "${!dnames[@]}"; do echo $key; done
             ;;
+        r)
+            if ! [[ -f $OPTARG ]] ; then
+                echo "Chyba v parametru -r, soubor $OPTARG nenalezen" 1>&2
+                exit_abnormal
+            fi
+            OLDIFS=$IFS
+            IFS=';'
+            while read kod_kraje nazev_kraje zkratka_kraje kod_NUTS3_kraje nazev_oblasti nic_nic
+            do
+                kod_NUTS3_kraje="${kod_NUTS3_kraje%\"}"
+                kod_NUTS3_kraje="${kod_NUTS3_kraje#\"}"
+                kod_NUTS3_kraje=${kod_NUTS3_kraje//" "/"_"}
+                nazev_kraje="${nazev_kraje%\"}"
+                nazev_kraje="${nazev_kraje#\"}"
+                if [[ $kod_NUTS3_kraje != "Kod_NUTS3_kraje" ]] ; then     # pokud to neni hlavicka, tak pridat do indexovaneho pole
+                    #echo "kod=$kod_NUTS3_kraje, nazev=$nazev_kraje"
+                    rnames[$kod_NUTS3_kraje]=$nazev_kraje
+                fi
+            done < $OPTARG
+            IFS=$OLDIFS
+            ;;            
         :)                                    # If expected argument omitted:
             echo "Error: -${OPTARG} requires an argument."
             exit_abnormal                       # Exit abnormally.
@@ -154,9 +198,11 @@ while getopts ":ha:b:g:sd:r:" options; do         # Loop: Get the next option;
     esac
 done
 
+# posunuti na nezpracovane parametry prikazove radky
 (( OPTIND-- ))
 shift $OPTIND
 
+# jestli mame zadany znamy prikaz, tak ho nastavime, jinak je prikaz "rewrite"
 if [[ "$1" == @(infected|merge|gender|age|daily|monthly|yearly|countries|districts|regions) ]] ; then
     PRIKAZ=$1
     shift
@@ -166,6 +212,7 @@ fi
 #echo "Prikaz = $PRIKAZ"
 #echo "Remaining arguments: ’$*’"
 
+# tabulka defaultnich poctu na ktere tisknout jeden HASH
 HASH_gender=100000
 HASH_age=10000
 HASH_daily=500
@@ -175,6 +222,7 @@ HASH_countries=100
 HASH_districts=1000
 HASH_regions=10000
 
+# pocitadla
 LINES=0
 MALE=0
 FEMALE=0
@@ -184,15 +232,15 @@ MAXCNT=0
 AGE=([0]=0 [6]=0 [16]=0 [26]=0 [36]=0 [46]=0 [56]=0 [66]=0 [76]=0 [86]=0 [96]=0 [106]=0)
 declare -a cntarr=()
 
-if [[ -z $* ]] ; then
+if [[ -z $* ]] ; then       # Jestli jsou zbyvajici argumenty zadne (prazdne), tak budeme cist stdin
     FILE_LIST="stdin"
 else
-    FILE_LIST=""
+    FILE_LIST=""            # Jinak vytvorime seznam souboru (vcetne rozbaleni * notace) a overime existenci vsech
     for FP in $* ; do
         for FNM in $FP ; do
             if ! [[ -f $FNM ]] ; then
-                echo "Soubor $FNM nenalezen" >&2
-                #exit 99
+                echo "Soubor $FNM nenalezen" 1>&2
+                exit_abnormal
             fi
             #echo $FNM
             if [[ -z $FILE_LIST ]] ; then
@@ -204,11 +252,12 @@ else
     done
 fi
 
-if [[ $PRIKAZ == "rewrite" || $PRIKAZ == "merge" ]] ; then
+if [[ $PRIKAZ == "rewrite" || $PRIKAZ == "merge" ]] ; then      # pokud kopirujeme vstup, musime jednou udelat hlavicku
     echo "id,datum,vek,pohlavi,kraj_nuts_kod,okres_lau_kod,nakaza_v_zahranici,nakaza_zeme_csu_kod,reportovano_khs"
 fi
 
-for FNM in $FILE_LIST ; do
+# SMYCKA ZPRACOVAVAJICI POSTUPN VSECHNY SOUBORY (NEBO STDIN)
+for FNM in $FILE_LIST ; do      # pro kazdy zpracovavany soubor spravne nastavit prikaz, kterym se bude zpracovavat
     #echo "Zpracovavam soubor \"$FNM\""
     if [[ $FNM == "stdin" ]] ; then
         FNM=""
@@ -221,6 +270,7 @@ for FNM in $FILE_LIST ; do
         CMD="cat"
     fi
 
+    # Hlavni smycka zpracovavajici vsechny radky v jednom soubrou
     OLDIFS=$IFS
     IFS=','
     while read id datum vek pohlavi kraj_nuts_kod okres_lau_kod nakaza_v_zahranici nakaza_zeme_csu_kod reportovano_khs
@@ -229,6 +279,7 @@ for FNM in $FILE_LIST ; do
         if (( $LINES % 50000 == 0 )) ; then     # tecka po 50 000 zaznamech, aby se vedelo, ze to neco dela - ODSTRANIT
             printf "."
         fi
+        # KONTROLY SPRAVNOSTI PREDPSANYCH POLOZEK
         # odstranit whites zleva a zprava u id
         id="${id#"${id%%[![:space:]]*}"}"
         id="${id%"${id##*[![:space:]]}"}"
@@ -241,30 +292,31 @@ for FNM in $FILE_LIST ; do
         # odstranit whites zleva a zprava u datum
         datum="${datum#"${datum%%[![:space:]]*}"}"
         datum="${datum%"${datum##*[![:space:]]}"}"
-        #if [[ $(chkDate $datum) -ne 0 ]] ; then     # kontrola dpravnosti data ODKOMENTOVAT
-        #    echo "Invalid date: $id,$datum,$vek,$pohlavi,$kraj_nuts_kod,$okres_lau_kod,$nakaza_v_zahranici,$nakaza_zeme_csu_kod,$reportovano_khs" >&2
-        #    continue
-        #fi
+        if [[ $(chkDate $datum) -ne 0 ]] ; then     # kontrola spravnosti data ODKOMENTOVAT
+            echo "Invalid date: $id,$datum,$vek,$pohlavi,$kraj_nuts_kod,$okres_lau_kod,$nakaza_v_zahranici,$nakaza_zeme_csu_kod,$reportovano_khs" 1>&2
+            continue
+        fi
         # odstranit whites zleva a zprava u vek
         vek="${vek#"${vek%%[![:space:]]*}"}"
         vek="${vek%"${vek##*[![:space:]]}"}"
         re_isanum='^[0-9]+$'
         if [[ -n $vek ]] ; then
             if ! [[ $vek =~ $re_isanum ]] ; then    # kontrola jestli je vek cele cislo
-                echo "Invalid age: $id,$datum,$vek,$pohlavi,$kraj_nuts_kod,$okres_lau_kod,$nakaza_v_zahranici,$nakaza_zeme_csu_kod,$reportovano_khs" >&2
+                echo "Invalid age: $id,$datum,$vek,$pohlavi,$kraj_nuts_kod,$okres_lau_kod,$nakaza_v_zahranici,$nakaza_zeme_csu_kod,$reportovano_khs" 1>&2
                 continue
             fi
         fi
+        # FILTRY
         if [[ -n $DATE_AFTER ]] ; then  # DATE_AFTER filtr
             #dbdate=$(date -d $datum +%s)
             #conddate=$(date -d $DATE_AFTER +%s)
             #if [ $dbdate -lt $conddate ]; then
-            if [[ $datum < $DATE_AFTER ]]; then
+            if [[ $datum < $DATE_AFTER ]]; then     # datumy mame vhodne naformatovane, takze je porovname jako retezce
                 continue
             fi  
         fi
         if [[ -n $DATE_BEFORE ]] ; then  # DATE_BEFORE filtr
-            if [[ $datum > $DATE_BEFORE ]]; then
+            if [[ $datum > $DATE_BEFORE ]]; then    # datumy mame vhodne naformatovane, takze je porovname jako retezce
                 continue
             fi  
         fi
@@ -273,6 +325,7 @@ for FNM in $FILE_LIST ; do
                 continue
             fi  
         fi
+        # VLASTNI ZPRACOVANI RADKU
         (( COUNTED++ ))         # radek je asi v potradku, tak ho zapocitame, jako platny
         case $PRIKAZ in
             infected)
@@ -379,21 +432,22 @@ for FNM in $FILE_LIST ; do
                 fi
                 ;;
             *)
-                echo "Prikaz zatim neni implementovan" >&2
+                echo "Prikaz zatim neni implementovan" 1>&2
                 exit_abnormal                       # Exit abnormally.
                 ;;
         esac
-    done < <($CMD $FNM)
+    done <<< $($CMD $FNM)
     IFS=$OLDIFS
 done
 
 echo                            # Prazdny radek po kontorlnich teckach. Toto pak oddelat
 echo "Zpracovano $LINES a zapocitano $COUNTED radku."  # Toto pak oddelat
 
-if [[ $MAXCNT -eq 0 ]] ; then
-    MAXCNT=$WIDTH
+if [[ $MAXCNT -eq 0 ]] ; then       # Nemelo by se to stat, ale pro jistotu, abychom pak nedelili nahodou nulou pri kresleni grafu
+    MAXCNT=10000
 fi
 
+# VYPIS ZPRACOVANYCH UDAJU PODLE ZADANEHO PRIKAZU
 case $PRIKAZ in
     infected)
         echo $COUNTED
@@ -451,6 +505,12 @@ case $PRIKAZ in
         done
         ;;
     districts)
+        MAX_item_len=0
+        for itm in "${dnames[@]}"; do
+            if [[ ${#itm} -gt $MAX_item_len ]] ; then
+                MAX_item_len=${#itm}
+            fi
+        done
         for ndx in "${!cntarr[@]}"
         do
             tndx=$ndx
@@ -461,23 +521,47 @@ case $PRIKAZ in
             elif [[ $tndx == "212" ]] ; then
                 tndx="20C"
             fi
-            echo "CZ0$tndx: $(vypis ${cntarr[$ndx]} $HASH_districts)"
+            if [[ ${#dnames[@]} -gt 0 ]] ; then
+                tndx="CZ0$tndx"
+                printf "%-${MAX_item_len}s: %s\n" "${dnames[$tndx]}" "$(vypis ${cntarr[$ndx]} $HASH_districts)"
+            else
+                echo "CZ0$tndx: $(vypis ${cntarr[$ndx]} $HASH_districts)"
+            fi
         done
         if [[ $NONECNT -gt 0 ]] ; then
-            echo "None: $(vypis $NONECNT $HASH_districts)"
+            if [[ ${#dnames[@]} -gt 0 ]] ; then
+                printf "%-${MAX_item_len}s: %s\n" "None" "$(vypis $NONECNT $HASH_districts)"
+            else
+                echo "None: $(vypis $NONECNT $HASH_districts)"
+            fi
         fi
         ;;
     regions)
+        MAX_item_len=0
+        for itm in "${rnames[@]}"; do
+            if [[ ${#itm} -gt $MAX_item_len ]] ; then
+                MAX_item_len=${#itm}
+            fi
+        done
         for ndx in "${!cntarr[@]}"
         do
-            echo "CZ0$ndx: $(vypis ${cntarr[$ndx]} $HASH_regions)"
+            if [[ ${#rnames[@]} -gt 0 ]] ; then
+                tndx="CZ0$ndx"
+                printf "%-${MAX_item_len}s: %s\n" "${rnames[$tndx]}" "$(vypis ${cntarr[$ndx]} $HASH_regions)"
+            else
+                echo "CZ0$ndx: $(vypis ${cntarr[$ndx]} $HASH_regions)"
+            fi
         done
         if [[ $NONECNT -gt 0 ]] ; then
-            echo "None: $(vypis $NONECNT $HASH_regions)"
+            if [[ ${#rnames[@]} -gt 0 ]] ; then
+                printf "%-${MAX_item_len}s: %s\n" "None" "$(vypis $NONECNT $HASH_regions)"
+            else
+                echo "None: $(vypis $NONECNT $HASH_regions)"
+            fi
         fi
         ;;
     *)
-        echo "Prikaz zatim neni implementovan na konci" >&2
+        echo "Prikaz zatim neni implementovan na konci" 1>&2
         exit_abnormal                       # Exit abnormally.
         ;;
 esac
