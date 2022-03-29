@@ -78,8 +78,8 @@ chkDate() {                             # Funkce: kontrola spravnosti datumu ve 
         if [[ ${1:4:1} != "-" || ${1:7:1} != "-" ]] ; then
             echo -n "1"
         else
-            #echo -n "0" # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
-            #return 0    # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
+            echo -n "0" # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
+            return 0    # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
             date -d $1 +"%Y-%m-%d" > /dev/null 2>&1
             if [[ $? -eq 0 ]] ; then
                 echo -n "0"
@@ -272,13 +272,43 @@ for FNM in $FILE_LIST ; do      # pro kazdy zpracovavany soubor spravne nastavit
 
     # Hlavni smycka zpracovavajici vsechny radky v jednom soubrou
     OLDIFS=$IFS
-    IFS=','
-    while read id datum vek pohlavi kraj_nuts_kod okres_lau_kod nakaza_v_zahranici nakaza_zeme_csu_kod reportovano_khs
+    IFS=","
+    while read -r line
     do
         (( LINES++ ))
         if (( $LINES % 50000 == 0 )) ; then     # tecka po 50 000 zaznamech, aby se vedelo, ze to neco dela - ODSTRANIT
             printf "."
         fi
+        #id datum vek pohlavi kraj_nuts_kod okres_lau_kod nakaza_v_zahranici nakaza_zeme_csu_kod reportovano_khs   
+        #echo "line=$line"
+        #linea=($line)
+        #id=${linea[0]}
+        #datum=${linea[1]}
+        #vek="1"
+        #pohlavi="M"
+        id="$(echo $line | cut -d' ' -f1)"
+        datum="$(echo $line | cut -d' ' -f2)"
+        vek="$(echo $line | cut -d' ' -f3)"
+        pohlavi="$(echo $line | cut -d' ' -f4)"
+        kraj_nuts_kod="$(echo $line | cut -d' ' -f5)"
+        okres_lau_kod="$(echo $line | cut -d' ' -f6)"
+        nakaza_v_zahranici="$(echo $line | cut -d' ' -f7)"
+        nakaza_zeme_csu_kod="$(echo $line | cut -d' ' -f8)"
+        reportovano_khs="$(echo $line | cut -d' ' -f9)"
+        awkout=$(echo $line | awk -F "\"* \"*" '{print $1,$2,$3,$4,$5,$6,$7,$8,$9}')
+        #echo "AAAAAAAAA AWKOUT=$awkout"
+        #awkarr=($awkout)
+        #id=${awkarr[0]}
+        #echo "IIIIIIIIIIIIIIIII ID=$id"
+        #datum=${awkarr[1]}
+        #vek=${awkarr[2]}
+        #pohlavi=${awkarr[3]}
+        #kraj_nuts_kod=${awkarr[4]}
+        #okres_lau_kod=${awkarr[5]}
+        #nakaza_v_zahranici=${awkarr[6]}
+        #nakaza_zeme_csu_kod=${awkarr[7]}
+        #reportovano_khs=${awkarr[8]}
+        #echo "id=$id, datum=$datum, vek=$vek, pohlavi=$pohlavi"
         # KONTROLY SPRAVNOSTI PREDPSANYCH POLOZEK
         # odstranit whites zleva a zprava u id
         id="${id#"${id%%[![:space:]]*}"}"
