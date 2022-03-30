@@ -8,15 +8,16 @@ show_help() {                           # Funkce: Tisk napovedy
     echo "  -h                     ukaze tuto napovedu"
     echo
     echo "  FILTERS muze byt kombinace nasledujicich (kazdy max. jednou):"
-    echo "    -a DATETIME          after: jen zaznamy po DATETIME. DATETIME ve formatu YYYY-MM-DD."
+    echo "    -a DATETIME          after: jen zaznamy po DATETIME (ve formatu YYYY-MM-DD)"
     echo "    -b DATETIME          before: jen zaznamy pred DATETIME (vcetne)."
-    echo "    -g GENDER            jen specifikce pohlavi. GENDER muze byt M (muzi) nebo Z (zeny)."
-    echo "    -s [WIDTH]           u prikazu gender, age, daily, monthly, yearly, countries, districts a regions"
-    echo "                         vypisuje data graficky v podobe histogramu. WIDTH nastavuje sirku histogramu."
-    echo "    -d DISTRICT_FILE     pro prikaz districts vypisuje místo LAU 1 kodu okresu jeho jmeno."
-    echo "                         Mapovani kodu na jmena je v souboru DISTRICT_FILE"
-    echo "    -r REGIONS_FILE      pro prikaz regions vypisuje místo NUTS 3 kodu kraje jeho jmeno."
-    echo "                         Mapovani kodu na jmena je v souboru REGIONS_FILE"
+    echo "    -g GENDER            jen specificke pohlavi GENDER - M (muzi) nebo Z (zeny)"
+    echo "    -s [WIDTH]           u prikazu gender, age, daily, monthly, yearly,"
+    echo "                         countries, districts a regions vypisuje data graficky "
+    echo "                         v podobe histogramu. WIDTH nastavuje sirku histogramu."
+    echo "    -d DISTRICT_FILE     pro prikaz districts vypisuje misto LAU 1 kodu okresu"
+    echo "                         jeho jmeno. Mapovani kodu je v souboru DISTRICT_FILE."
+    echo "    -r REGIONS_FILE      pro prikaz regions vypisuje misto NUTS 3 kodu kraje"
+    echo "                         jeho jmeno. Mapovani kodu je v souboru REGIONS_FILE."
     echo
     echo "  COMMAND je jeden z nasledujicich prikazu:"
     echo "    infected             spocita pocet nakazenych"
@@ -33,7 +34,7 @@ show_help() {                           # Funkce: Tisk napovedy
     echo "  LOG, LOG2 ... jsou vstupni CSV soubory. Pri neuvedeni se pouzije stdin."
 }
 
-exit_abnormal() {                       # Funkce: Ukonceni programu s chybou a vypisem kratke napovedy
+exit_abnormal() {                       # Funkce: Ukonceni programu s chybou a vypisem strucne napovedy
     echo "Usage: $0 [-h] [FILTERS] [COMMAND] [LOG [LOG2 [...]]" 1>&2  # Redirect to stderr
     exit 1
 }
@@ -78,8 +79,8 @@ chkDate() {                             # Funkce: kontrola spravnosti datumu ve 
         if [[ ${1:4:1} != "-" || ${1:7:1} != "-" ]] ; then
             echo -n "1"
         else
-            echo -n "0" # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
-            return 0    # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
+            #echo -n "0" # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
+            #return 0    # kvuli zrychleni nekontrolovat externe datum ODSTRANIT
             date -d $1 +"%Y-%m-%d" > /dev/null 2>&1
             if [[ $? -eq 0 ]] ; then
                 echo -n "0"
@@ -90,7 +91,7 @@ chkDate() {                             # Funkce: kontrola spravnosti datumu ve 
     fi
 }
 
-declare -A dnames
+declare -A dnames                       # asociativni pole pro jmena okresu a kraju
 declare -A rnames
 
 # zpracovani parametru na prikazove radce
@@ -272,43 +273,31 @@ for FNM in $FILE_LIST ; do      # pro kazdy zpracovavany soubor spravne nastavit
 
     # Hlavni smycka zpracovavajici vsechny radky v jednom soubrou
     OLDIFS=$IFS
-    IFS=","
+    IFS=';'
     while read -r line
     do
         (( LINES++ ))
-        if (( $LINES % 50000 == 0 )) ; then     # tecka po 50 000 zaznamech, aby se vedelo, ze to neco dela - ODSTRANIT
+        #echo "Zpracovavam radek $LINES"
+        id=${line%%,*}
+        line="${line#$id,}"
+        datum=${line%%,*}
+        line="${line#$datum,}"
+        vek=${line%%,*}
+        line="${line#$vek,}"
+        pohlavi=${line%%,*}
+        line="${line#$pohlavi,}"
+        kraj_nuts_kod=${line%%,*}
+        line="${line#$kraj_nuts_kod,}"
+        okres_lau_kod=${line%%,*}
+        line="${line#$okres_lau_kod,}"
+        nakaza_v_zahranici=${line%%,*}
+        line="${line#$nakaza_v_zahranici,}"
+        nakaza_zeme_csu_kod=${line%%,*}
+        reportovano_khs="${line#$nakaza_zeme_csu_kod,}"
+
+        if (( $LINES % 10000 == 0 )) ; then     # tecka po 50 000 zaznamech, aby se vedelo, ze to neco dela - ODSTRANIT
             printf "."
         fi
-        #id datum vek pohlavi kraj_nuts_kod okres_lau_kod nakaza_v_zahranici nakaza_zeme_csu_kod reportovano_khs   
-        #echo "line=$line"
-        #linea=($line)
-        #id=${linea[0]}
-        #datum=${linea[1]}
-        #vek="1"
-        #pohlavi="M"
-        id="$(echo $line | cut -d' ' -f1)"
-        datum="$(echo $line | cut -d' ' -f2)"
-        vek="$(echo $line | cut -d' ' -f3)"
-        pohlavi="$(echo $line | cut -d' ' -f4)"
-        kraj_nuts_kod="$(echo $line | cut -d' ' -f5)"
-        okres_lau_kod="$(echo $line | cut -d' ' -f6)"
-        nakaza_v_zahranici="$(echo $line | cut -d' ' -f7)"
-        nakaza_zeme_csu_kod="$(echo $line | cut -d' ' -f8)"
-        reportovano_khs="$(echo $line | cut -d' ' -f9)"
-        awkout=$(echo $line | awk -F "\"* \"*" '{print $1,$2,$3,$4,$5,$6,$7,$8,$9}')
-        #echo "AAAAAAAAA AWKOUT=$awkout"
-        #awkarr=($awkout)
-        #id=${awkarr[0]}
-        #echo "IIIIIIIIIIIIIIIII ID=$id"
-        #datum=${awkarr[1]}
-        #vek=${awkarr[2]}
-        #pohlavi=${awkarr[3]}
-        #kraj_nuts_kod=${awkarr[4]}
-        #okres_lau_kod=${awkarr[5]}
-        #nakaza_v_zahranici=${awkarr[6]}
-        #nakaza_zeme_csu_kod=${awkarr[7]}
-        #reportovano_khs=${awkarr[8]}
-        #echo "id=$id, datum=$datum, vek=$vek, pohlavi=$pohlavi"
         # KONTROLY SPRAVNOSTI PREDPSANYCH POLOZEK
         # odstranit whites zleva a zprava u id
         id="${id#"${id%%[![:space:]]*}"}"
@@ -356,8 +345,8 @@ for FNM in $FILE_LIST ; do      # pro kazdy zpracovavany soubor spravne nastavit
             fi  
         fi
         # VLASTNI ZPRACOVANI RADKU
-        (( COUNTED++ ))         # radek je asi v potradku, tak ho zapocitame, jako platny
-        case $PRIKAZ in
+        (( COUNTED++ ))                 # radek je asi v poradku, tak ho zapocitame, jako platny
+        case $PRIKAZ in                 # a jdeme zpracovat radek pro zadany prikaz
             infected)
                 ;;
             merge | rewrite)
@@ -401,19 +390,19 @@ for FNM in $FILE_LIST ; do      # pro kazdy zpracovavany soubor spravne nastavit
                     chkMax $(( AGE[0]++ ))
                 fi
                 ;;
-            daily)
+            daily)                      # index pole ve formatu YYYYMMDD
                 ndx="${datum:0:4}${datum:5:2}${datum:8:2}"
                 chkMax $(( cntarr[$ndx] ++ ))
                 ;;
-            monthly)
+            monthly)                    # index pole ve formatu YYYYMM
                 ndx="${datum:0:4}${datum:5:2}"
                 chkMax $(( cntarr[$ndx] ++ ))
                 ;;
-            yearly)
+            yearly)                     # index pole ve formatu YYYY
                 ndx="${datum:0:4}"
                 chkMax $(( cntarr[$ndx] ++ ))
                 ;;
-            countries)
+            countries)                  # index pole ve formatu ASCII(znak1)*256+ASCII(znak2)
                 if [[ -n $nakaza_zeme_csu_kod && $nakaza_zeme_csu_kod != "CZ" ]] ; then
                     if [[ ${#nakaza_zeme_csu_kod} -ne 2 ]] ; then
                         echo "Neocekavany identifikator zeme - spatna delka" >%2
@@ -428,7 +417,7 @@ for FNM in $FILE_LIST ; do      # pro kazdy zpracovavany soubor spravne nastavit
                     (( COUNTED-- ))
                 fi
                 ;;
-            districts)
+            districts)                  # index pole jako posledni 3 cifry kodu okresu (20A se prevede na 210 atp.)
                 if [[ -n $okres_lau_kod ]] ; then
                     if [[ ${#okres_lau_kod} -ne 6 || ${okres_lau_kod:0:3} != "CZ0" ]] ; then
                         echo "Neocekavany identifikator okresu - spatna delka nebo chybi CZ0 na zacatku" >%2
@@ -448,7 +437,7 @@ for FNM in $FILE_LIST ; do      # pro kazdy zpracovavany soubor spravne nastavit
                     (( NONECNT++ ))
                 fi
                 ;;
-            regions)
+            regions)                    # index pole jako posledni try cifry kodu kraje
                 if [[ -n $kraj_nuts_kod ]] ; then
                     if [[ ${#kraj_nuts_kod} -ne 5 || ${kraj_nuts_kod:0:3} != "CZ0" ]] ; then
                         echo "Neocekavany identifikator kraje - spatna delka nebo chybi CZ0 na zacatku" >%2
@@ -482,7 +471,7 @@ case $PRIKAZ in
     infected)
         echo $COUNTED
         ;;
-    merge | rewrite)
+    merge | rewrite)                    # tady se uz nic nevypisuje, vsechy radky jsme vypsali behem zpracovani
         ;;
     gender)
         echo "M: $(vypis $MALE $HASH_gender)"
@@ -535,30 +524,32 @@ case $PRIKAZ in
         done
         ;;
     districts)
-        MAX_item_len=0
+        MAX_item_len=0                  # spocitame si maximalni delku polozky, abychom mohli stejne odsadit :
         for itm in "${dnames[@]}"; do
             if [[ ${#itm} -gt $MAX_item_len ]] ; then
                 MAX_item_len=${#itm}
             fi
         done
-        for ndx in "${!cntarr[@]}"
-        do
-            tndx=$ndx
-            if [[ $tndx == "210" ]] ; then
-                tndx="20A"
-            elif [[ $tndx == "211" ]] ; then
-                tndx="20B"
-            elif [[ $tndx == "212" ]] ; then
-                tndx="20C"
-            fi
-            if [[ ${#dnames[@]} -gt 0 ]] ; then
-                tndx="CZ0$tndx"
-                printf "%-${MAX_item_len}s: %s\n" "${dnames[$tndx]}" "$(vypis ${cntarr[$ndx]} $HASH_districts)"
-            else
-                echo "CZ0$tndx: $(vypis ${cntarr[$ndx]} $HASH_districts)"
-            fi
-        done
-        if [[ $NONECNT -gt 0 ]] ; then
+        {                               # vypiseme vsechny okresy a nakonec setridime
+            for ndx in "${!cntarr[@]}"
+            do
+                tndx=$ndx
+                if [[ $tndx == "210" ]] ; then
+                    tndx="20A"
+                elif [[ $tndx == "211" ]] ; then
+                    tndx="20B"
+                elif [[ $tndx == "212" ]] ; then
+                    tndx="20C"
+                fi
+                if [[ ${#dnames[@]} -gt 0 ]] ; then
+                    tndx="CZ0$tndx"
+                    printf "%-${MAX_item_len}s: %s\n" "${dnames[$tndx]}" "$(vypis ${cntarr[$ndx]} $HASH_districts)"
+                else
+                    echo "CZ0$tndx: $(vypis ${cntarr[$ndx]} $HASH_districts)"
+                fi
+            done
+        } | sort
+        if [[ $NONECNT -gt 0 ]] ; then  # pokud jsou nejake polozky beze jmene, vypiseme None: pocet
             if [[ ${#dnames[@]} -gt 0 ]] ; then
                 printf "%-${MAX_item_len}s: %s\n" "None" "$(vypis $NONECNT $HASH_districts)"
             else
@@ -567,22 +558,24 @@ case $PRIKAZ in
         fi
         ;;
     regions)
-        MAX_item_len=0
+        MAX_item_len=0                  # spocitame si maximalni delku polozky, abychom mohli stejne odsadit :
         for itm in "${rnames[@]}"; do
             if [[ ${#itm} -gt $MAX_item_len ]] ; then
                 MAX_item_len=${#itm}
             fi
         done
-        for ndx in "${!cntarr[@]}"
-        do
-            if [[ ${#rnames[@]} -gt 0 ]] ; then
-                tndx="CZ0$ndx"
-                printf "%-${MAX_item_len}s: %s\n" "${rnames[$tndx]}" "$(vypis ${cntarr[$ndx]} $HASH_regions)"
-            else
-                echo "CZ0$ndx: $(vypis ${cntarr[$ndx]} $HASH_regions)"
-            fi
-        done
-        if [[ $NONECNT -gt 0 ]] ; then
+        {                               # vypiseme vsechny kraje a nakonec setridime
+            for ndx in "${!cntarr[@]}"
+            do
+                if [[ ${#rnames[@]} -gt 0 ]] ; then
+                    tndx="CZ0$ndx"
+                    printf "%-${MAX_item_len}s: %s\n" "${rnames[$tndx]}" "$(vypis ${cntarr[$ndx]} $HASH_regions)"
+                else
+                    echo "CZ0$ndx: $(vypis ${cntarr[$ndx]} $HASH_regions)"
+                fi
+            done
+        } | sort
+        if [[ $NONECNT -gt 0 ]] ; then  # pokud jsou nejake polozky beze jmene, vypiseme None: pocet
             if [[ ${#rnames[@]} -gt 0 ]] ; then
                 printf "%-${MAX_item_len}s: %s\n" "None" "$(vypis $NONECNT $HASH_regions)"
             else
