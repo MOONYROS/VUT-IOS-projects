@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Shellovy skript pro analyzu zaznamu osob s prokazanou nakazou koronavirem
-# VUT Brno FIT 1. Uloha IOS (2022)
+# VUT FIT 
+# 1. Uloha IOS (2022)
 # (c) 2022 Ondrej Lukasek, xlukas15
 
 export POSIXLY_CORRECT=1
@@ -391,64 +392,64 @@ for FNM in $FILE_LIST ; do      # pro kazdy zpracovavany soubor spravne nastavit
                 ;;
             gender)
                 if [[ $pohlavi == "M" ]]; then
-                    chkMax $(( MALE++ ))
+                    chkMax $(( ++MALE ))
                 elif [[ $pohlavi == "Z" ]]; then
-                    chkMax $(( FEMALE++ ))
+                    chkMax $(( ++FEMALE ))
                 else
-                    chkMax $(( NONECNT++ ))
+                    chkMax $(( ++NONECNT ))
                 fi
                 ;;
             age)
                 if [[ -z $vek ]]; then
-                    chkMax $(( NONECNT++))
+                    chkMax $(( ++NONECNT ))
                 elif [ $vek -ge 106 ]; then
-                    chkMax $(( AGE[106]++ ))
+                    chkMax $(( ++AGE[106] ))
                 elif [ $vek -ge 96 ]; then
-                    chkMax $(( AGE[96]++ ))
+                    chkMax $(( ++AGE[96] ))
                 elif [ $vek -ge 86 ]; then
-                    chkMax $(( AGE[86]++ ))
+                    chkMax $(( ++AGE[86] ))
                 elif [ $vek -ge 76 ]; then
-                    chkMax $(( AGE[76]++ ))
+                    chkMax $(( ++AGE[76] ))
                 elif [ $vek -ge 66 ]; then
-                    chkMax $(( AGE[66]++ ))
+                    chkMax $(( ++AGE[66] ))
                 elif [ $vek -ge 56 ]; then
-                    chkMax $(( AGE[56]++ ))
+                    chkMax $(( ++AGE[56] ))
                 elif [ $vek -ge 46 ]; then
-                    chkMax $(( AGE[46]++ ))
+                    chkMax $(( ++AGE[46] ))
                 elif [ $vek -ge 36 ]; then
-                    chkMax $(( AGE[36]++ ))
+                    chkMax $(( ++AGE[36] ))
                 elif [ $vek -ge 26 ]; then
-                    chkMax $(( AGE[26]++ ))
+                    chkMax $(( ++AGE[26] ))
                 elif [ $vek -ge 16 ]; then
-                    chkMax $(( AGE[16]++ ))
+                    chkMax $(( ++AGE[16] ))
                 elif [ $vek -ge 6 ]; then
-                    chkMax $(( AGE[6]++ ))
+                    chkMax $(( ++AGE[6] ))
                 elif [ $vek -ge 0 ]; then
-                    chkMax $(( AGE[0]++ ))
+                    chkMax $(( ++AGE[0] ))
                 fi
                 ;;
             daily)
                 if [[ -z $datum ]]; then
-                    chkMax $(( NONECNT++))
+                    chkMax $(( ++NONECNT ))
                 else                      # index pole ve formatu YYYYMMDD
                     ndx="${datum:0:4}${datum:5:2}${datum:8:2}"
-                    chkMax $(( cntarr[$ndx] ++ ))
+                    chkMax $(( ++cntarr[$ndx] ))
                 fi
                 ;;
             monthly)
                 if [[ -z $datum ]]; then
-                    chkMax $(( NONECNT++))
+                    chkMax $(( ++NONECNT ))
                 else                    # index pole ve formatu YYYYMM
                     ndx="${datum:0:4}${datum:5:2}"
-                    chkMax $(( cntarr[$ndx] ++ ))
+                    chkMax $(( ++cntarr[$ndx] ))
                 fi
                 ;;
             yearly)
                 if [[ -z $datum ]]; then
-                    chkMax $(( NONECNT++))
+                    chkMax $(( ++NONECNT ))
                 else                     # index pole ve formatu YYYY
                     ndx="${datum:0:4}"
-                    chkMax $(( cntarr[$ndx] ++ ))
+                    chkMax $(( ++cntarr[$ndx] ))
                 fi
                 ;;
             countries)                  # index pole ve formatu ASCII(znak1)*256+ASCII(znak2)
@@ -461,7 +462,7 @@ for FNM in $FILE_LIST ; do      # pro kazdy zpracovavany soubor spravne nastavit
                     c1=$(ord ${nakaza_zeme_csu_kod:0:1})
                     c2=$(ord ${nakaza_zeme_csu_kod:1:1})
                     ndx=$(($c1*256+$c2))
-                    chkMax $(( cntarr[$ndx] ++ ))
+                    chkMax $(( ++cntarr[$ndx] ))
                 else
                     (( COUNTED-- ))
                 fi
@@ -470,30 +471,30 @@ for FNM in $FILE_LIST ; do      # pro kazdy zpracovavany soubor spravne nastavit
                 if [[ -n $okres_lau_kod ]]; then
                     if [[ ${#dnames[@]} -gt 0 ]]; then     # mame soubor se jmeny
                         if [ ${dnames[$okres_lau_kod]+abc} ]; then  # tak zkontrolujeme jestli je v nem kod naseho zaznamu
-                            chkMax $(( cntkod[$okres_lau_kod] ++ )) # je, tak inkrementujeme pocitadlo
+                            chkMax $(( ++cntkod[$okres_lau_kod] )) # je, tak inkrementujeme pocitadlo
                         else                                        # jinak vypiseme chybu
                             echo "Invalid value: $id,$datum,$vek,$pohlavi,$kraj_nuts_kod,$okres_lau_kod,$nakaza_v_zahranici,$nakaza_zeme_csu_kod,$reportovano_khs" 1>&2
                         fi
                     else
-                        chkMax $(( cntkod[$okres_lau_kod] ++ ))     # nemame co kontrolovat, tak jen inkrementujeme pocitadlo
+                        chkMax $(( ++cntkod[$okres_lau_kod] ))     # nemame co kontrolovat, tak jen inkrementujeme pocitadlo
                     fi
                 else
-                    (( NONECNT++ ))
+                    chkMax $(( ++NONECNT ))
                 fi
                 ;;
             regions)                    # index pole jako posledni try cifry kodu kraje
                 if [[ -n $kraj_nuts_kod ]]; then
                     if [[ ${#rnames[@]} -gt 0 ]]; then     # mame soubor se jmeny
                         if [ ${rnames[$kraj_nuts_kod]+abc} ]; then  # tak zkontrolujeme jestli je v nem kod naseho zaznamu
-                            chkMax $(( cntkod[$kraj_nuts_kod] ++ )) # je, tak inkrementujeme pocitadlo
+                            chkMax $(( ++cntkod[$kraj_nuts_kod] )) # je, tak inkrementujeme pocitadlo
                         else                                        # jinak vypiseme chybu
                             echo "Invalid value: $id,$datum,$vek,$pohlavi,$kraj_nuts_kod,$okres_lau_kod,$nakaza_v_zahranici,$nakaza_zeme_csu_kod,$reportovano_khs" 1>&2
                         fi
                     else
-                        chkMax $(( cntkod[$kraj_nuts_kod] ++ ))     # nemame co kontrolovat, tak jen inkrementujeme pocitadlo
+                        chkMax $(( ++cntkod[$kraj_nuts_kod] ))     # nemame co kontrolovat, tak jen inkrementujeme pocitadlo
                     fi
                 else
-                    (( NONECNT++ ))
+                    chkMax $(( ++NONECNT ))
                 fi
                 ;;
             *)
