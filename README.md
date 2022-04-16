@@ -1,1 +1,1 @@
-# bc.-1-ls-IOS-corona
+# VUT FIT IOS Projekt 1
