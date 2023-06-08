@@ -1,4 +1,4 @@
-# VUT IOS projects
+# VUT IOS projects (2021/2022)
 
 These are source codes for both projects for IOS classes (Operation Systems) on VUT FIT for year 2021/2022.
 
